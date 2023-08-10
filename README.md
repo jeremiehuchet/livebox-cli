@@ -9,9 +9,9 @@ $ livebox-cli --help
 Usage: livebox-cli [OPTIONS] --password <PASSWORD> <COMMAND>
 
 Commands:
-  show      Invoke sysbus method
-  firewall  Edit firewall NAT rules
-  help      Print this message or the help of the given subcommand(s)
+  exec  Invoke sysbus method
+  nat   Edit NAT rules
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
       --base-url <LIVEBOX_API_BASEURL>  Livebox base url [env: LIVEBOX_API_BASEURL=] [default: http://livebox.home]
@@ -25,10 +25,10 @@ Options:
 ### Show
 
 ```
-$ livebox-cli show --help
-Invoke sysbus method on
+$ livebox-cli exec --help
+Invoke sysbus method
 
-Usage: livebox-cli --password <PASSWORD> show --service <SERVICE> --method <METHOD>
+Usage: livebox-cli --password <PASSWORD> exec --service <SERVICE> --method <METHOD>
 
 Options:
   -s, --service <SERVICE>  service name (ex: `NMC`)
@@ -39,11 +39,21 @@ Options:
 ### Firewall
 
 ```
-firewall --help
-Usage: livebox-cli --password <PASSWORD> firewall <COMMAND>
+$ livebox-cli nat --help
+Edit NAT rules
+
+Usage: livebox-cli --password <PASSWORD> nat <COMMAND>
 
 Commands:
+  list
   add      
+      --id <ID>                         A unique identifier
+      --description <DESCRIPTION>       A description
+  -p, --protocol <PROTOCOL>             The protocol to forward [possible values: tcp, udp, all]
+      --source <SOURCE_HOST>            The allowed source hosts
+      --sport <SOURCE_PORT>             The exposed port
+      --destination <DESTINATION_HOST>  The destination host
+      --dport <DESTINATION_PORT>        The destination port
   enable   
   disable  
   remove   
@@ -81,8 +91,6 @@ Options:
 ```
 
 ### Filter output using JsonPath
-
-
 
 `livebox-cli --user admin --password secret --query $.data.IPAddress --raw exec --service NMC --method getWANStatus`
 

@@ -1,6 +1,7 @@
-use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use anyhow::{anyhow, Result};
+use clap::{arg, builder::PossibleValue, Args, Parser, Subcommand, ValueEnum};
 
+use livebox::SetPortFowardingParams;
 use serde_json_path::JsonPath;
 
 mod livebox;
@@ -34,7 +35,7 @@ struct CliArgs {
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Invoke sysbus method
-    Show {
+    Exec {
         /// service name (ex: `NMC`)
         #[arg(short, long)]
         service: String,
@@ -43,18 +44,16 @@ enum Commands {
         #[arg(short, long)]
         method: String,
     },
-    /// Edit firewall NAT rules
-    Firewall {
+    /// Edit NAT rules
+    NAT {
         #[command(subcommand)]
         action: FirewallActions,
     },
 }
 
 #[derive(Debug, Subcommand)]
-enum SysbusService {}
-
-#[derive(Debug, Subcommand)]
 enum FirewallActions {
+    List,
     Add(FirewallRule),
     Enable(NamedFirewallRule),
     Disable(NamedFirewallRule),
@@ -63,18 +62,83 @@ enum FirewallActions {
 
 #[derive(Debug, Args)]
 struct FirewallRule {
-    /// externalPort
-    #[arg(short, long)]
-    externalPort: i32,
-    /// internalPort
-    #[arg(short, long)]
-    internalPort: i32,
+    /// A unique identifier
+    #[arg(long)]
+    id: String,
+
+    /// A description
+    #[arg(long)]
+    description: String,
+
+    /// The protocol to forward
+    #[arg(short, long, value_enum)]
+    protocol: Protocol,
+
+    /// The allowed source hosts
+    #[arg(long = "source")]
+    source_host: Option<String>,
+
+    /// The exposed port
+    #[arg(long = "sport")]
+    source_port: i16,
+
+    /// The destination host
+    #[arg(long = "destination")]
+    destination_host: String,
+
+    /// The destination port
+    #[arg(long = "dport")]
+    destination_port: i16,
+}
+
+impl Into<SetPortFowardingParams> for FirewallRule {
+    fn into(self) -> SetPortFowardingParams {
+        SetPortFowardingParams::new(
+            self.id,
+            self.description,
+            self.protocol.into(),
+            self.source_port.to_string(),
+            self.destination_port.to_string(),
+            self.destination_host,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+enum Protocol {
+    TCP,
+    UDP,
+    ALL,
+}
+
+impl Into<livebox::Protocol> for Protocol {
+    fn into(self) -> livebox::Protocol {
+        match self {
+            Protocol::TCP => livebox::Protocol::TCP,
+            Protocol::UDP => livebox::Protocol::UDP,
+            Protocol::ALL => livebox::Protocol::ALL,
+        }
+    }
+}
+
+impl ValueEnum for Protocol {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Protocol::TCP, Protocol::UDP, Protocol::ALL]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        Some(match &self {
+            Protocol::TCP => PossibleValue::new("tcp"),
+            Protocol::UDP => PossibleValue::new("udp"),
+            Protocol::ALL => PossibleValue::new("all"),
+        })
+    }
 }
 
 #[derive(Debug, Args)]
 struct NamedFirewallRule {
-    /// rule name
-    name: String,
+    /// rule identifier
+    id: String,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -90,23 +154,31 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = match args.command {
-        Commands::Show { service, method } => client.execute(service, method).await?,
-        Commands::Firewall { action } => todo!(),
+        Commands::Exec { service, method } => client.execute(service, method).await?,
+        Commands::NAT { action } => match action {
+            FirewallActions::List => client.list_nat_rules().await?,
+            FirewallActions::Add(rule) => client.add_nat_rule(rule.into()).await?,
+            FirewallActions::Enable(rule) => client.enable_nat_rule(rule.id).await?,
+            FirewallActions::Disable(rule) => client.disable_nat_rule(rule.id).await?,
+            FirewallActions::Remove(rule) => client.remove_nat_rule(rule.id).await?,
+        },
     };
     client.logout().await?;
 
-    if let Some(response) = response {
-        let output = match args.query.map(|q| JsonPath::parse(q.as_str())) {
-            Some(path) => path?.query(&response).exactly_one()?,
-            None => &response,
-        };
-        let output = if args.output_raw_strings && output.is_string() {
-            output.as_str().unwrap().to_string()
-        } else {
-            serde_json::to_string_pretty(output)?
-        };
+    let output = match args.query.map(|q| JsonPath::parse(q.as_str())) {
+        Some(Ok(path)) => path
+            .query(&response)
+            .exactly_one()
+            .map_err(|err| anyhow!(err).context("No match for given JsonPath"))?,
+        Some(Err(err)) => Err(anyhow!(err).context("JsonPath compilation error"))?,
+        None => &response,
+    };
+    let output = if args.output_raw_strings && output.is_string() {
+        output.as_str().unwrap().to_string()
+    } else {
+        serde_json::to_string_pretty(output)?
+    };
 
-        println!("{}", output);
-    }
+    println!("{}", output);
     Ok(())
 }
