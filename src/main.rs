@@ -25,7 +25,7 @@ struct CliArgs {
 
     /// json path expression to filter output (ex: `$.IPAddress`)
     #[arg(short, long)]
-    query: Option<String>,
+    query: Option<JsonPath>,
 
     /// output raw strings, not JSON text
     #[arg(short = 'r', long = "raw")]
@@ -165,12 +165,11 @@ async fn main() -> Result<(), anyhow::Error> {
     };
     client.logout().await?;
 
-    let output = match args.query.map(|q| JsonPath::parse(q.as_str())) {
-        Some(Ok(path)) => path
+    let output = match args.query {
+        Some(path) => path
             .query(&response)
             .exactly_one()
             .map_err(|err| anyhow!(err).context("No match for given JsonPath"))?,
-        Some(Err(err)) => Err(anyhow!(err).context("JsonPath compilation error"))?,
         None => &response,
     };
     let output = if args.output_raw_strings && output.is_string() {
