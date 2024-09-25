@@ -1,0 +1,7 @@
+{
+  extends: ["config:best-practices", "local>jeremiehuchet/renovate-runner"],
+  enabledManagers: [
+    "cargo",
+    "github-actions",
+  ],
+}
