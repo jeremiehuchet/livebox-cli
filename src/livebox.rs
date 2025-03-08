@@ -94,7 +94,7 @@ impl Client {
             (ACCEPT, HeaderValue::from_static(APPLICATION_SAH_WS_CALL)),
             (
                 HeaderName::from_static(X_CONTEXT),
-                HeaderValue::from_str(&context_id).unwrap(),
+                HeaderValue::from_str(&context_id)?,
             ),
         ]);
 
@@ -278,6 +278,7 @@ pub(super) struct GenericRequest<'a> {
 
 #[derive(Deserialize)]
 struct GenericResponse<S, D> {
+    #[expect(unused)]
     status: S,
     data: D,
 }
@@ -328,6 +329,7 @@ struct LogoutResponse {
 }
 
 #[derive(Deserialize)]
+#[expect(unused)]
 struct LoginContext {
     #[serde(rename = "contextID")]
     context_id: String,
@@ -470,6 +472,7 @@ pub enum Protocol {
 }
 
 #[derive(Deserialize)]
+#[expect(unused)]
 pub struct NatRuleView {
     #[serde(rename = "Id")]
     id: String,
