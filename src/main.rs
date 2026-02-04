@@ -20,6 +20,10 @@ struct CliArgs {
     #[arg(short, long)]
     password: String,
 
+    /// Allow insecure server connections when using SSL (default: false, verifies certificates)
+    #[arg(short = 'k', long)]
+    insecure: bool,
+
     #[command(subcommand)]
     command: Commands,
 
@@ -150,6 +154,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = livebox::ClientBuilder::default()
         .with_base_url(args.livebox_api_baseurl)
         .with_credentials(args.username, args.password)
+        .with_insecure(args.insecure)
         .build()
         .await?;
 

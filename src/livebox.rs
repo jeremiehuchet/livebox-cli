@@ -22,6 +22,7 @@ const X_CONTEXT: &str = "x-context";
 pub(super) struct ClientBuilder {
     base_url_ws: String,
     credentials: Option<(String, String)>,
+    insecure: bool,
 }
 
 impl Default for ClientBuilder {
@@ -29,6 +30,7 @@ impl Default for ClientBuilder {
         Self {
             base_url_ws: LIVEBOX_BASE_URL.to_string(),
             credentials: None,
+            insecure: false,
         }
     }
 }
@@ -45,9 +47,14 @@ impl ClientBuilder {
         self
     }
 
+    pub fn with_insecure(mut self, insecure: bool) -> Self {
+        self.insecure = insecure;
+        self
+    }
+
     pub async fn build(self) -> Result<Client> {
         let (username, password) = self.credentials.ok_or(anyhow!("missing credentials"))?;
-        Client::login(self.base_url_ws, username, password).await
+        Client::login(self.base_url_ws, username, password, self.insecure).await
     }
 }
 
@@ -58,10 +65,16 @@ pub(super) struct Client {
 }
 
 impl Client {
-    async fn login(base_url: String, username: String, password: String) -> Result<Self> {
+    async fn login(
+        base_url: String,
+        username: String,
+        password: String,
+        insecure: bool,
+    ) -> Result<Self> {
         let cookie_store = Arc::new(Jar::default());
         let http_client = ReqwestClientBuilder::default()
             .cookie_provider(cookie_store.clone())
+            .danger_accept_invalid_certs(insecure)
             .build()
             .expect("error building HTTP client");
 
@@ -102,6 +115,7 @@ impl Client {
             http_client: ReqwestClientBuilder::default()
                 .cookie_provider(cookie_store)
                 .default_headers(context_headers)
+                .danger_accept_invalid_certs(insecure)
                 .build()
                 .expect("error building HTTP client"),
             base_url_ws: base_url,
