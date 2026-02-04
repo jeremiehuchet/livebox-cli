@@ -150,7 +150,12 @@ async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
     let args = CliArgs::parse();
+    let output = run(args).await?;
+    println!("{}", output);
+    Ok(())
+}
 
+async fn run(args: CliArgs) -> Result<String, anyhow::Error> {
     let client = livebox::ClientBuilder::default()
         .with_base_url(args.livebox_api_baseurl)
         .with_credentials(args.username, args.password)
@@ -183,6 +188,174 @@ async fn main() -> Result<(), anyhow::Error> {
         serde_json::to_string_pretty(output)?
     };
 
-    println!("{}", output);
-    Ok(())
+    Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use mockito::Server;
+
+    #[cfg(test)]
+    struct MockLivebox {
+        _m_login: mockito::Mock,
+        _m_exec: mockito::Mock,
+        _m_logout: mockito::Mock,
+        server: mockito::ServerGuard,
+    }
+
+    impl MockLivebox {
+        const DEFAULT_RESPONSE: &'static str = r#"{
+  "data": {
+    "ConnectionState": "Bound",
+    "DNSServers": "163.134.239.9,59.50.158.77",
+    "GponState": "O5_Operation",
+    "IPAddress": "55.27.2.115",
+    "IPv6Address": "4e95:624a:8079:0784:6922:e6e7:b878:5815",
+    "IPv6DelegatedPrefix": "4e95:624a:8079:0784::/56",
+    "LastConnectionError": "None",
+    "LinkState": "up",
+    "LinkType": "gpon",
+    "MACAddress": "BA-D3-52-DA-DB-30",
+    "Protocol": "dhcp",
+    "RemoteGateway": "212.168.252.207",
+    "WanState": "up"
+  },
+  "status": true
+}"#;
+
+        async fn new() -> Self {
+            Self::with_response(Self::DEFAULT_RESPONSE).await
+        }
+
+        async fn with_response(mock_response_body: &'static str) -> Self {
+            let mut server = Server::new_async().await;
+            let url = server.url();
+
+            // Mock login
+            let _m_login = server.mock("POST", "/ws")
+                .match_header("Authorization", "X-Sah-Login")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(r#"{"data":{"contextID":"dummy-context","groups":"admin","username":"admin"},"status":0}"#)
+                .create_async().await;
+
+            // Mock execution
+            let _m_exec = server
+                .mock("POST", "/ws")
+                .match_header("x-context", "dummy-context")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(mock_response_body)
+                .create_async()
+                .await;
+
+            // Mock logout
+            let _m_logout = server
+                .mock("POST", "/ws")
+                .match_header("Authorization", "X-Sah-Logout dummy-context")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(r#"{"status":1}"#)
+                .create_async()
+                .await;
+
+            Self {
+                _m_login,
+                _m_exec,
+                _m_logout,
+                server,
+            }
+        }
+
+        fn url(&self) -> String {
+            self.server.url()
+        }
+    }
+
+    #[tokio::test]
+    async fn should_return_original_server_response_body() {
+        let mock = MockLivebox::new().await;
+
+        let args = CliArgs::try_parse_from(&[
+            "livebox-cli",
+            "--base-url",
+            &mock.url(),
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "exec",
+            "--service",
+            "NMC",
+            "--method",
+            "getWANStatus",
+        ])
+        .unwrap();
+
+        let output_str = run(args).await.unwrap();
+
+        // Parse both as Value to ignore formatting differences
+        let actual_json: serde_json::Value = serde_json::from_str(&output_str).unwrap();
+        let expected_json: serde_json::Value =
+            serde_json::from_str(MockLivebox::DEFAULT_RESPONSE).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[tokio::test]
+    async fn should_extract_value_with_json_path_query() {
+        let mock = MockLivebox::new().await;
+
+        let args = CliArgs::try_parse_from(&[
+            "livebox-cli",
+            "--base-url",
+            &mock.url(),
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--query",
+            "$.data.IPAddress",
+            "exec",
+            "--service",
+            "NMC",
+            "--method",
+            "getWANStatus",
+        ])
+        .unwrap();
+
+        let output_str = run(args).await.unwrap();
+
+        assert_eq!(output_str.trim(), r#""55.27.2.115""#);
+    }
+
+    #[tokio::test]
+    async fn should_extract_raw_value_with_json_path_query() {
+        let mock = MockLivebox::new().await;
+
+        let args = CliArgs::try_parse_from(&[
+            "livebox-cli",
+            "--base-url",
+            &mock.url(),
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--query",
+            "$.data.IPAddress",
+            "--raw",
+            "exec",
+            "--service",
+            "NMC",
+            "--method",
+            "getWANStatus",
+        ])
+        .unwrap();
+
+        let output_str = run(args).await.unwrap();
+
+        assert_eq!(output_str, "55.27.2.115");
+    }
 }

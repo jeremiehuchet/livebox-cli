@@ -369,34 +369,34 @@ enum FirewallMethod {
 #[derive(Serialize)]
 struct NoParameters {}
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug, PartialEq)]
 pub struct SetPortFowardingParams {
-    id: String,
+    pub(crate) id: String,
 
-    origin: String,
+    pub(crate) origin: String,
 
-    description: String,
+    pub(crate) description: String,
 
     #[serde(rename = "sourceInterface")]
-    source_interface: String,
+    pub(crate) source_interface: String,
 
-    protocol: Protocol,
+    pub(crate) protocol: Protocol,
 
     #[serde(rename = "externalPort")]
-    external_port: String,
+    pub(crate) external_port: String,
 
     #[serde(rename = "internalPort")]
-    internal_port: String,
+    pub(crate) internal_port: String,
 
     #[serde(rename = "destinationIPAddress")]
-    destination_ip_address: String,
+    pub(crate) destination_ip_address: String,
 
     #[serde(rename = "destinationMACAddress")]
-    destination_mac_address: String,
+    pub(crate) destination_mac_address: String,
 
-    enable: bool,
+    pub(crate) enable: bool,
 
-    persistent: bool,
+    pub(crate) persistent: bool,
 }
 
 impl SetPortFowardingParams {
@@ -475,7 +475,7 @@ impl From<&NatRuleView> for DeletePortForwardingParams {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Protocol {
     #[serde(rename = "6")]
     TCP,
