@@ -17,6 +17,7 @@ Options:
       --base-url <LIVEBOX_API_BASEURL>  Livebox base url [env: LIVEBOX_API_BASEURL=] [default: http://livebox.home]
   -u, --username <USERNAME>             Livebox administration username [default: admin]
   -p, --password <PASSWORD>             Livebox administration password
+  -k, --insecure                        Allow insecure server connections when using SSL (default: false, verifies certificates)
   -q, --query <QUERY>                   json path expression to filter output (ex: `$.IPAddress`)
   -r, --raw                             output raw strings, not JSON text
   -h, --help                            Print help
@@ -67,7 +68,7 @@ Options:
 
 ### Invoke sysbus methos
 
-`livebox-cli --user admin --password secret exec --service NMC --method getWANStatus`
+`livebox-cli --username admin --password secret exec --service NMC --method getWANStatus`
 
 ```json
 {
@@ -92,7 +93,7 @@ Options:
 
 ### Filter output using JsonPath
 
-`livebox-cli --user admin --password secret --query $.data.IPAddress --raw exec --service NMC --method getWANStatus`
+`livebox-cli --username admin --password secret --query $.data.IPAddress --raw exec --service NMC --method getWANStatus`
 
 ```
 55.27.2.115
