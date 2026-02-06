@@ -196,8 +196,11 @@ async fn run(args: CliArgs) -> Result<String> {
             .map_err(|_| CliError::JsonPathNoMatch)?,
         None => &response,
     };
-    let output = if args.output_raw_strings && output.is_string() {
-        output.as_str().unwrap().to_string()
+    let output = if args.output_raw_strings {
+        match output {
+            serde_json::Value::String(s) => s.clone(),
+            _ => serde_json::to_string_pretty(output)?,
+        }
     } else {
         serde_json::to_string_pretty(output)?
     };
@@ -245,7 +248,7 @@ mod tests {
 
         async fn with_response(mock_response_body: &'static str) -> Self {
             let mut server = Server::new_async().await;
-            let url = server.url();
+            let _url = server.url();
 
             // Mock login
             let _m_login = server.mock("POST", "/ws")

@@ -113,8 +113,7 @@ impl Client {
         let http_client = ReqwestClientBuilder::default()
             .cookie_provider(cookie_store.clone())
             .danger_accept_invalid_certs(insecure)
-            .build()
-            .expect("error building HTTP client");
+            .build()?;
 
         let response = http_client
             .post(&base_url)
@@ -153,8 +152,7 @@ impl Client {
                 .cookie_provider(cookie_store)
                 .default_headers(context_headers)
                 .danger_accept_invalid_certs(insecure)
-                .build()
-                .expect("error building HTTP client"),
+                .build()?,
             base_url_ws: base_url,
             context_id,
         })
@@ -241,18 +239,13 @@ impl Client {
     }
 
     async fn structured_nat_rules(&self) -> Result<Vec<NatRuleView>> {
+        #[derive(Deserialize)]
+        struct NatRulesResponse {
+            status: HashMap<String, NatRuleView>,
+        }
         let raw_rules = self.list_nat_rules().await?;
-        let rules: Vec<NatRuleView> = raw_rules
-            .get("status")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .values()
-            .into_iter()
-            .map(|value| serde_json::to_string(value).unwrap())
-            .map(|str| serde_json::from_str(&str).unwrap())
-            .collect();
-        Ok(rules)
+        let response: NatRulesResponse = serde_json::from_value(raw_rules)?;
+        Ok(response.status.into_values().collect())
     }
 
     async fn update_nat_rule<F>(&self, rule_id: String, transform_rule: F) -> Result<Value>
