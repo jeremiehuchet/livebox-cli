@@ -1,6 +1,44 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::{anyhow, Ok, Result};
+use thiserror::Error;
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("missing credentials")]
+    MissingCredentials,
+
+    #[error("Authentication failed: {status}")]
+    AuthenticationFailed {
+        status: reqwest::StatusCode,
+        body: String,
+    },
+
+    #[error("Execution failed: {status}")]
+    ExecutionFailed {
+        status: reqwest::StatusCode,
+        body: String,
+    },
+
+    #[error("Logout error: {status}")]
+    LogoutError {
+        status: reqwest::StatusCode,
+        body: String,
+    },
+
+    #[error("No rule with id {0}")]
+    RuleNotFound(String),
+
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Invalid header value: {0}")]
+    InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
+}
 
 use log::{debug, warn};
 use reqwest::{
@@ -53,7 +91,7 @@ impl ClientBuilder {
     }
 
     pub async fn build(self) -> Result<Client> {
-        let (username, password) = self.credentials.ok_or(anyhow!("missing credentials"))?;
+        let (username, password) = self.credentials.ok_or(Error::MissingCredentials)?;
         Client::login(self.base_url_ws, username, password, self.insecure).await
     }
 }
@@ -97,8 +135,7 @@ impl Client {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await?;
-            return Err(anyhow!("Authentication failed: {status}")
-                .context(format!("Response body: {body}")));
+            return Err(Error::AuthenticationFailed { status, body });
         }
 
         let context_id = response.json::<LoginResponse>().await?.data.context_id;
@@ -147,7 +184,7 @@ impl Client {
         }
         let response = serde_json::from_str::<LogoutResponse>(&body)?;
         if response.status != 1 {
-            warn!("Logout error: {body}")
+            return Err(Error::LogoutError { status, body });
         }
         Ok(())
     }
@@ -170,9 +207,7 @@ impl Client {
         let body = response.text().await?;
         debug!("<<< {status}\n{body}");
         if !status.is_success() {
-            return Err(
-                anyhow!("Execution failed: {status}").context(format!("Response body: {body}"))
-            );
+            return Err(Error::ExecutionFailed { status, body });
         }
 
         Ok(serde_json::from_str(&body)?)
@@ -228,7 +263,7 @@ impl Client {
         let rule_to_edit = actual_rules
             .iter()
             .find(|rule| rule.id == rule_id)
-            .ok_or_else(|| anyhow!("No rule with id {rule_id}"))?;
+            .ok_or_else(|| Error::RuleNotFound(rule_id))?;
         let mut parameters: SetPortFowardingParams = rule_to_edit.into();
         transform_rule(&mut parameters);
         let result = self
@@ -267,7 +302,7 @@ impl Client {
         let rule_to_delete = actual_rules
             .iter()
             .find(|rule| rule.id == rule_id)
-            .ok_or_else(|| anyhow!("No rule with id {rule_id}"))?;
+            .ok_or_else(|| Error::RuleNotFound(rule_id))?;
         let result = self
             .exec(SysbusRequest::Firewall(
                 FirewallMethod::DeletePortForwarding {

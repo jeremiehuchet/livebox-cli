@@ -1,10 +1,24 @@
-use anyhow::{anyhow, Result};
-use clap::{arg, builder::PossibleValue, Args, Parser, Subcommand, ValueEnum};
+use clap::{builder::PossibleValue, Args, Parser, Subcommand, ValueEnum};
 
 use livebox::SetPortFowardingParams;
 use serde_json_path::JsonPath;
+use thiserror::Error;
 
 mod livebox;
+
+#[derive(Error, Debug)]
+enum CliError {
+    #[error("Livebox error: {0}")]
+    Livebox(#[from] livebox::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("No match for given JsonPath")]
+    JsonPathNoMatch,
+}
+
+type Result<T> = std::result::Result<T, CliError>;
 
 #[derive(Debug, Parser)]
 struct CliArgs {
@@ -146,7 +160,7 @@ struct NamedFirewallRule {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<()> {
     env_logger::init();
 
     let args = CliArgs::parse();
@@ -155,7 +169,7 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn run(args: CliArgs) -> Result<String, anyhow::Error> {
+async fn run(args: CliArgs) -> Result<String> {
     let client = livebox::ClientBuilder::default()
         .with_base_url(args.livebox_api_baseurl)
         .with_credentials(args.username, args.password)
@@ -179,7 +193,7 @@ async fn run(args: CliArgs) -> Result<String, anyhow::Error> {
         Some(path) => path
             .query(&response)
             .exactly_one()
-            .map_err(|err| anyhow!(err).context("No match for given JsonPath"))?,
+            .map_err(|_| CliError::JsonPathNoMatch)?,
         None => &response,
     };
     let output = if args.output_raw_strings && output.is_string() {
